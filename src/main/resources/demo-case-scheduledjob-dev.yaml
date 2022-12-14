@@ -1,0 +1,14 @@
+db:
+  host: "DESKTOP-D7SD2S5"
+  instance: "MULEDEMO1222"
+  port: "62766"
+  name: "sourceMuleDemo1222"
+
+source:
+  tableSRC: "cases_SOURCE"
+  
+destination:
+  tableCAN: "cases_CAN"
+  tableUSA: "cases_USA"
+  tableAUS: "cases_AUS"
+  tableFailed: "cases_FAILED"

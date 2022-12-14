@@ -1,0 +1,37 @@
+#%RAML 1.0
+types:
+  caseRecord:
+    properties:
+      caseID:
+        example: Example
+        type: string
+      fname?:
+        example: Example
+        type: string
+      lname?:
+        example: Example
+        type: string
+      country:
+        example: Example
+        type: string
+      language?:
+        example: Example
+        type: string
+title: demo-case-scheduledJob-sapi
+baseUri: case-scheduler
+description: |
+  System API to translate data from a source SQL system to a destination SQL system on a daily basis, sorting into the correct table based on country value.
+mediaType:
+  - application/json
+version: "1"
+protocols:
+  - HTTP
+  - HTTPS
+/scheduler:
+  get:
+    displayName: scheduler
+    responses:
+      "200":
+        body: {}
+    securedBy: []
+securedBy: []

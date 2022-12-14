@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:secure-properties="http://www.mulesoft.org/schema/mule/secure-properties" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/secure-properties http://www.mulesoft.org/schema/mule/secure-properties/current/mule-secure-properties.xsd">
+	<configuration-properties doc:name="Common Configs" doc:id="f3d2e5ef-e858-4104-a473-295ec7e1ca46" file="demo-case-scheduledjob-common.yaml" />
+	<configuration-properties doc:name="Dev Configs" doc:id="3a1a2809-f743-4a7d-89b5-5fcbc54ee91f" file="demo-case-scheduledjob-dev.yaml" />
+	<global-property doc:name="Global Property" doc:id="ea4d0715-ad32-4dae-9799-c5f3b026d53d" name="MULE_SECRET_KEY" value="1234567898765432" />
+	<secure-properties:config name="Secure_Properties_Config" doc:name="Secure Properties Config" doc:id="8c73005f-b7b4-40e1-a6f5-640cd4739be4" file="secure-properties.yaml" key="${MULE_SECRET_KEY}"/>
+</mule>

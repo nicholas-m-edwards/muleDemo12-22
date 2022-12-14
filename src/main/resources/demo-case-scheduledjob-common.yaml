@@ -1,0 +1,3 @@
+settings:
+  batchMax: "1000"
+  failMax: "1000"

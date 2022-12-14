@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<mule xmlns:validation="http://www.mulesoft.org/schema/mule/validation" xmlns:os="http://www.mulesoft.org/schema/mule/os" xmlns:db="http://www.mulesoft.org/schema/mule/db" xmlns:batch="http://www.mulesoft.org/schema/mule/batch" xmlns:doc="http://www.mulesoft.org/schema/mule/documentation" xmlns="http://www.mulesoft.org/schema/mule/core" xmlns:apikit="http://www.mulesoft.org/schema/mule/mule-apikit" xmlns:ee="http://www.mulesoft.org/schema/mule/ee/core" xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd http://www.mulesoft.org/schema/mule/mule-apikit http://www.mulesoft.org/schema/mule/mule-apikit/current/mule-apikit.xsd http://www.mulesoft.org/schema/mule/ee/core http://www.mulesoft.org/schema/mule/ee/core/current/mule-ee.xsd 
+http://www.mulesoft.org/schema/mule/batch http://www.mulesoft.org/schema/mule/batch/current/mule-batch.xsd
+http://www.mulesoft.org/schema/mule/db http://www.mulesoft.org/schema/mule/db/current/mule-db.xsd
+http://www.mulesoft.org/schema/mule/os http://www.mulesoft.org/schema/mule/os/current/mule-os.xsd
+http://www.mulesoft.org/schema/mule/validation http://www.mulesoft.org/schema/mule/validation/current/mule-validation.xsd">
+    <http:listener-config name="demo-case-scheduledjob-sapi-httpListenerConfig" basePath="/triggerFlow">
+        <http:listener-connection host="0.0.0.0" port="8081" />
+    </http:listener-config>
+    <apikit:config name="demo-case-scheduledjob-sapi-config" api="demo-case-scheduledjob-sapi.raml" outboundHeadersMapName="outboundHeaders" httpStatusVarName="httpStatus" />
+	<db:config name="source-db-config" doc:name="Database Config" doc:id="d7823730-1282-4b07-884d-a474bca1bbc7" >
+		<db:mssql-connection host="${db.host}" instanceName="${db.instance}" port="${db.port}" user="${secure::client.id}" password="${secure::client.secret}" databaseName="${db.name}" />
+	</db:config>
+	<db:config name="destination-db-config" doc:name="Database Config" doc:id="8d51927d-b1ad-4bb3-ad98-eed115a2a657" >
+		<db:mssql-connection host="${db.host}" instanceName="${db.instance}" port="${db.port}" user="${secure::client.id}" password="${secure::client.secret}" databaseName="${db.name}"/>
+	</db:config>
+	<os:config name="object-store-reconnection" doc:name="ObjectStore Config" doc:id="b1bc6956-6786-4636-9716-c841e40a93b1" >
+		<os:connection />
+	</os:config>
+	<os:object-store name="last-write-date" doc:name="Object store" doc:id="4b7958ab-0178-4ba6-8890-570e91db0c99" expirationIntervalUnit="DAYS" config-ref="object-store-reconnection"/>
+	<flow name="scheduler-MAIN" doc:id="8a02b11f-07ab-4d0e-9216-e4217c481a91">
+		<!-- <http:listener doc:name="Listener" doc:id="1cec1df6-f9f9-4322-b477-3d040584acba" config-ref="demo-case-scheduledjob-sapi-httpListenerConfig" path="main"/> -->
+		<scheduler doc:name="cronScheduler" doc:id="20dcb189-67fa-48ca-85f3-3c563c6219f7" doc:description="Cron expression validates to: run once every day at 10PM (20:00) EST.">
+			<scheduling-strategy >
+				<cron expression="0 20 0 * * ? *" timeZone="EST"/>
+			</scheduling-strategy>
+		</scheduler>
+		<flow-ref doc:name="checkOS" doc:id="082c850c-7772-430d-9531-17566287eb1c" name="demo-case-scheduledjob-os-check"/>
+		<db:select doc:name="selectFromSource" doc:id="abcda085-b753-43b0-a332-e10487aff5fb" config-ref="source-db-config">
+			<db:sql><![CDATA[SELECT * FROM cases_SOURCE
+WHERE (lastWriteDate >= :lastWriteDate )]]></db:sql>
+			<db:input-parameters ><![CDATA[#[{
+	lastWriteDate: payload.lastWriteDate
+}]]]></db:input-parameters>
+		</db:select>
+		<batch:job jobName="cases-batch-processing" doc:id="36213694-e775-40f3-bca2-dde4f55faea7" blockSize="${settings.batchMax}" maxFailedRecords="${settings.failMax}">
+			<batch:process-records >
+				<batch:step name="Batch_Step" doc:id="7c7ee806-8b39-43ef-8c06-c05283a5aa57" >
+					<ee:transform doc:name="createJsonPayload" doc:id="6c0b63d7-b287-4a91-b878-97efca5f31fe" >
+						<ee:message >
+							<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+---
+{
+	caseID:payload.caseID,
+	fname:payload.fname,
+	lname:payload.lname,
+	language:payload.language,
+	country:payload.country,
+	lastWriteDate:payload.lastWriteDate
+}]]></ee:set-payload>
+						</ee:message>
+					</ee:transform>
+					<choice doc:name="Choice" doc:id="40332307-7521-465b-a25a-7e6f3229ecea">
+						<when expression='#[payload.country == "USA"]'>
+							<db:insert doc:name="insertUSA" doc:id="6015c817-bc16-471f-ad83-3dc5bd6605ea" config-ref="source-db-config">
+								<db:sql><![CDATA[INSERT INTO cases_USA (caseID, fname, lname, country, language, lastWriteDate)
+VALUES (:caseID, :fname, :lname, :country, :language, :lastWriteDate)]]></db:sql>
+								<db:input-parameters><![CDATA[#[{
+	"caseID":payload.caseID,
+	"fname":payload.fname,
+	"lname":payload.lname,
+	"country":payload.country,
+	"language":payload.language,
+	"lastWriteDate":payload.lastWriteDate
+}]]]></db:input-parameters>
+							</db:insert>
+						</when>
+						<when expression='#[payload.country == "CAN"]'>
+							<db:insert doc:name="insertCAN" doc:id="cdc0ee7e-fd0e-4aad-acc8-3326438011de" config-ref="destination-db-config">
+								<db:sql><![CDATA[INSERT INTO cases_CAN (caseID, fname, lname, country, language, lastWriteDate)
+VALUES (:caseID, :fname, :lname, :country, :language, :lastWriteDate)]]></db:sql>
+								<db:input-parameters><![CDATA[#[{
+	"caseID":payload.caseID,
+	"fname":payload.fname,
+	"lname":payload.lname,
+	"country":payload.country,
+	"language":payload.language,
+	"lastWriteDate":payload.lastWriteDate
+}]]]></db:input-parameters>
+							</db:insert>
+						</when>
+						<when expression='#[payload.country == "AUS"]'>
+							<db:insert doc:name="insertAUS" doc:id="5d01cc16-6275-42fa-9898-3018f9cae5ef" config-ref="destination-db-config">
+								<db:sql><![CDATA[INSERT INTO cases_AUS (caseID, fname, lname, country, language, lastWriteDate)
+VALUES (:caseID, :fname, :lname, :country, :language, :lastWriteDate)]]></db:sql>
+								<db:input-parameters><![CDATA[#[{
+	"caseID":payload.caseID,
+	"fname":payload.fname,
+	"lname":payload.lname,
+	"country":payload.country,
+	"language":payload.language,
+	"lastWriteDate":payload.lastWriteDate
+}]]]></db:input-parameters>
+							</db:insert>
+						</when>
+						<otherwise>
+							<db:insert doc:name="insertFailed" doc:id="df78f50c-03a0-44b4-befb-87ae48784318" config-ref="destination-db-config">
+								<db:sql><![CDATA[INSERT INTO cases_FAILED (caseID, fname, lname, country, language, lastWriteDate)
+VALUES (:caseID, :fname, :lname, :country, :language, :lastWriteDate)]]></db:sql>
+								<db:input-parameters><![CDATA[#[{
+	"caseID":payload.caseID,
+	"fname":payload.fname,
+	"lname":payload.lname,
+	"country":payload.country,
+	"language":payload.language,
+	"lastWriteDate":payload.lastWriteDate
+}]]]></db:input-parameters>
+							</db:insert>
+						</otherwise>
+					</choice>
+				</batch:step>
+			</batch:process-records>
+			<batch:on-complete >
+				<logger level="INFO" doc:name="showBatchValues" doc:id="d9cbbe89-5bcd-4c27-84da-8831366cb5ab" message="#[payload]" />
+				<flow-ref doc:name="setNewLWD" doc:id="62d5f902-35b1-47c0-ab23-869ae6153162" name="demo-case-scheduledjob-os-update"/>
+			</batch:on-complete>
+		</batch:job>
+	</flow>
+	<flow name="demo-case-scheduledjob-os-check" doc:id="fb6903b9-7a8d-4442-962e-8427314f7eb9" >
+		<os:contains doc:name="checkLastWriteDate" doc:id="351d9ebf-5d93-4d52-90db-00c17167874f" key="last-write-date" objectStore="last-write-date"/>
+		<choice doc:name="Choice" doc:id="ff3dc14b-7e9e-4af4-a82b-89435566eaca" >
+			<when expression="#[payload != false]">
+				<os:retrieve doc:name="retriveLastWriteDate" doc:id="988132ba-d0e6-4dfb-830c-fde4162e244c" key="last-write-date" objectStore="last-write-date" />
+			</when>
+			<otherwise>
+				<flow-ref doc:name="updateOS" doc:id="5339e2ff-dbb2-436a-8fa6-bc2769fb81d9" name="demo-case-scheduledjob-os-update"/>
+				<ee:transform doc:name="setLastWriteDate" doc:id="921b82be-a9d4-45b2-adf2-f7687982c1b1" >
+					<ee:message >
+						<ee:set-payload ><![CDATA[%dw 2.0
+output application/json
+import * from dw::core::Strings
+
+type timestamp = String { format: "uuuu-MM-dd HH:mm:ss"}
+---
+{
+	lastWriteDate: now() - |P7D| as timestamp
+}]]></ee:set-payload>
+					</ee:message>
+				</ee:transform>
+			</otherwise>
+		</choice>
+	</flow>
+	<sub-flow name="demo-case-scheduledjob-os-update" doc:id="886cafe9-08fe-4b67-ae4e-b0d25eb3c20f" >
+		<os:store doc:name="storeLWD" doc:id="d0f08542-b173-4dad-85f4-2d5992e9b853" key="last-write-date" objectStore="last-write-date" failOnNullValue="false">
+					<os:value><![CDATA[#[%dw 2.0
+output application/json
+import * from dw::core::Strings
+
+type timestamp = String { format: "uuuu-MM-dd HH:mm:ss"}
+---
+{
+	lastWriteDate: now() as timestamp
+}]]]></os:value>
+				</os:store>
+	</sub-flow>
+</mule>
